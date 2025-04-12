@@ -1,90 +1,60 @@
-This code creates a macOS app with a simple UI for tracking daily water intake.  It uses a `UserDefaults` to persist the data between app launches.  Remember to create a new macOS app project in Xcode before pasting this code.
+You did not provide any Swift code from `WaterTracker/MainView.swift`.  To improve the code, I need to see the existing code.  Please provide the code so I can offer specific improvements.
 
-**WaterTracker/MainView.swift**
+However, I can give you some general advice on improving a macOS bloodwork tracking app's `MainView.swift` file, assuming it uses SwiftUI:
+
+**General Improvements:**
+
+* **Data Model:**  Ensure your data model is well-structured and uses appropriate data types.  Consider using structs for individual bloodwork entries and potentially a class or struct to manage the collection of entries.  Use `Codable` conformance to easily save and load data.
+
+* **Error Handling:** Implement robust error handling.  Handle potential issues like file I/O errors, network errors (if fetching data externally), and data validation errors gracefully.  Use `do-catch` blocks and present informative error messages to the user.
+
+* **Data Persistence:** Choose a suitable persistence method.  `UserDefaults` is fine for small amounts of data, but for a more substantial bloodwork tracking app, consider using Core Data, FileManager (with JSON or plist encoding), or a cloud-based solution (iCloud, Firebase, etc.).
+
+* **UI Design:**  Follow Apple's Human Interface Guidelines for macOS.  Use appropriate controls, spacing, and visual hierarchy to create a clear and intuitive user interface. Consider using a table or list to display bloodwork entries.
+
+* **Data Display:**  Clearly display relevant bloodwork information, such as date, test type, and results.  Use formatting to make the data easily readable (e.g., units for measurements).  Consider adding visual cues (e.g., color-coding) to highlight abnormal results.
+
+* **Data Input:** Use appropriate input controls (e.g., text fields, date pickers, number formatters) for entering bloodwork data.  Validate user input to prevent invalid data from being entered.
+
+* **Sorting and Filtering:** Allow the user to sort and filter the bloodwork entries by date, test type, or result value.
+
+* **Charting:** Consider incorporating charts to visualize trends in the bloodwork data over time.  Libraries like Charts (Swift Charts) can be helpful.
+
+* **Testability:** Write unit tests to verify the correctness of your data model and view logic.  Make your code modular and testable.
+
+
+**Example Improvements (Illustrative):**
+
+Let's say you have a simple struct for a bloodwork entry:
 
 ```swift
-import SwiftUI
-
-struct MainView: View {
-    @State private var totalWaterIntake: Double = 0
-    @State private var showingAlert = false
-
-    var body: some View {
-        VStack {
-            Text("Total Water Intake: \(totalWaterIntake, specifier: "%.1f") ml")
-                .font(.largeTitle)
-                .padding()
-
-            Button("Log 250ml") {
-                addWater(amount: 250)
-            }
-            .padding()
-            .buttonStyle(.borderedProminent)
-            
-            Button("Reset") {
-                resetWaterIntake()
-            }
-            .padding()
-            .buttonStyle(.borderedProminent)
-            .foregroundColor(.red)
-        }
-        .padding()
-        .onAppear {
-            loadWaterIntake()
-        }
-        .alert("Water Intake Reset", isPresented: $showingAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Your daily water intake has been reset.")
-        }
-    }
-
-    func addWater(amount: Double) {
-        totalWaterIntake += amount
-        saveWaterIntake()
-    }
-
-    func saveWaterIntake() {
-        UserDefaults.standard.set(totalWaterIntake, forKey: "totalWaterIntake")
-    }
-
-    func loadWaterIntake() {
-        if let intake = UserDefaults.standard.object(forKey: "totalWaterIntake") as? Double {
-            totalWaterIntake = intake
-        }
-    }
-    
-    func resetWaterIntake() {
-        totalWaterIntake = 0
-        saveWaterIntake()
-        showingAlert = true
-    }
+struct BloodworkEntry: Identifiable, Codable {
+    let id = UUID()
+    let date: Date
+    let testType: String
+    let result: Double
+    let unit: String
 }
+```
 
-struct MainView_Previews: PreviewProvider {
-    static var previews: some View {
-        MainView()
+This could be improved by adding error handling during initialization and more robust data validation:
+
+```swift
+struct BloodworkEntry: Identifiable, Codable {
+    let id = UUID()
+    let date: Date
+    let testType: String
+    let result: Double
+    let unit: String
+
+    init?(date: Date, testType: String, result: Double, unit: String) {
+        guard result >= 0 else { return nil } // Example validation
+        self.date = date
+        self.testType = testType
+        self.result = result
+        self.unit = unit
     }
 }
 ```
 
-**Explanation:**
-
-* **`@State` variables:**  `totalWaterIntake` stores the current water intake, and `showingAlert` controls the alert display.
-* **`VStack`:** Arranges the UI elements vertically.
-* **`Text`:** Displays the total water intake.  The `specifier: "%.1f"` formats the number to one decimal place.
-* **`Button`:**  Adds 250ml to the total intake when tapped.  Uses the `buttonStyle` modifier for a nice macOS look.
-* **`onAppear` modifier:** Loads the saved water intake when the view appears.
-* **`saveWaterIntake()`:** Saves the `totalWaterIntake` to `UserDefaults`.
-* **`loadWaterIntake()`:** Loads the `totalWaterIntake` from `UserDefaults`.
-* **`resetWaterIntake()`:** Resets the total intake to 0 and displays an alert.
-* **`alert` modifier:** Shows an alert to confirm the reset action.
-
-
-**To run this code:**
-
-1. Create a new macOS App project in Xcode.
-2. Replace the contents of `ContentView.swift` with the code above.
-3. Run the app.
-
-You should now have a simple macOS app that lets you track your daily water intake. Remember that this uses `UserDefaults` for persistence, which is suitable for simple apps but might not be ideal for more complex data management.  For larger applications, consider using Core Data or another persistent storage solution.
+Once you provide your code, I can give you much more specific and helpful feedback.
