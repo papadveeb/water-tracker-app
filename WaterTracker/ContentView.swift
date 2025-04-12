@@ -1,142 +1,186 @@
-Okay, since you didn't provide the `ContentView.swift` code, I'll provide a more complete example implementing the suggestions I gave earlier.  This example uses UserDefaults for simplicity, but you should consider Core Data for a production-ready app with larger datasets.
-
-```swift
 import SwiftUI
-import Charts // Make sure you've added Charts to your project
 
-// Data Model
+// Model for a single bloodwork entry
 struct BloodworkEntry: Identifiable, Codable {
-    let id = UUID()
-    let date: Date
-    let testName: String
-    let value: Double
-    let unit: String
+    var id = UUID()  // Changed to var to support Codable
+    var date: Date
+    var testName: String
+    var value: Double
+    var unit: String
     var notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, date, testName, value, unit, notes
+    }
 }
 
-// Data Management (using UserDefaults - replace with Core Data for a real app)
+// Data manager using UserDefaults
 class BloodworkData: ObservableObject {
-    @Published var entries: [BloodworkEntry] = []
-    private let defaults = UserDefaults.standard
-    private let entriesKey = "bloodworkEntries"
+    @Published var entries: [BloodworkEntry] {
+        didSet {
+            saveEntries()
+        }
+    }
+    private let entriesKey = "BloodworkEntries"
 
     init() {
-        if let data = defaults.data(forKey: entriesKey),
+        if let data = UserDefaults.standard.data(forKey: entriesKey),
            let decodedEntries = try? JSONDecoder().decode([BloodworkEntry].self, from: data) {
-            entries = decodedEntries
+            self.entries = decodedEntries
+        } else {
+            self.entries = []
         }
     }
 
-    func addEntry(entry: BloodworkEntry) {
+    func addEntry(_ entry: BloodworkEntry) {
         entries.append(entry)
-        saveEntries()
     }
 
-    func saveEntries() {
+    private func saveEntries() {
         if let encoded = try? JSONEncoder().encode(entries) {
-            defaults.set(encoded, forKey: entriesKey)
+            UserDefaults.standard.set(encoded, forKey: entriesKey)
         }
+    }
+
+    func averageValue(for testName: String) -> Double? {
+        let matchingEntries = entries.filter { $0.testName == testName }
+        guard !matchingEntries.isEmpty else { return nil }
+        let total = matchingEntries.reduce(0.0) { $0 + $1.value }
+        return total / Double(matchingEntries.count)
     }
 }
 
-// Main View
+// Main view for the app
 struct ContentView: View {
-    @ObservedObject var bloodworkData = BloodworkData()
-    @State private var isAddingEntry = false
+    @StateObject private var bloodworkData = BloodworkData()
+    @State private var newDate = Date()
+    @State private var newTestName = ""
+    @State private var newValue = ""
+    @State private var newUnit = ""
+    @State private var newNotes = ""
+    @State private var selectedTestName = ""
+    @State private var showingTrends = false
 
     var body: some View {
         NavigationView {
             VStack {
-                // Chart (requires Charts library)
-                Chart {
-                    ForEach(bloodworkData.entries) { entry in
-                        BarMark(
-                            x: .value("Date", entry.date, unit: .day),
-                            y: .value("Value", entry.value)
-                        )
-                        .annotation(alignment: .top) {
-                            Text("\(entry.value) \(entry.unit)")
+                // Form to add new bloodwork entry
+                Form {
+                    Section(header: Text("Add New Bloodwork Entry")) {
+                        DatePicker("Date", selection: $newDate, displayedComponents: .date)
+                        TextField("Test Name (e.g., Cholesterol)", text: $newTestName)
+                        TextField("Value (e.g., 150)", text: $newValue)
+                            .keyboardType(.decimalPad)
+                        TextField("Unit (e.g., mg/dL)", text: $newUnit)
+                        TextField("Notes (optional)", text: $newNotes)
+                        Button("Add Entry") {
+                            if let value = Double(newValue), !newTestName.isEmpty, !newUnit.isEmpty {
+                                let entry = BloodworkEntry(
+                                    date: newDate,
+                                    testName: newTestName,
+                                    value: value,
+                                    unit: newUnit,
+                                    notes: newNotes.isEmpty ? nil : newNotes
+                                )
+                                bloodworkData.addEntry(entry)
+                                // Reset form
+                                newDate = Date()
+                                newTestName = ""
+                                newValue = ""
+                                newUnit = ""
+                                newNotes = ""
+                            }
                         }
+                        .disabled(newTestName.isEmpty || newValue.isEmpty || newUnit.isEmpty)
                     }
                 }
-                .chartXAxis(.date())
-                .frame(height: 200)
-                .padding()
+                .frame(height: 300)
 
+                // List of entries
                 List {
                     ForEach(bloodworkData.entries) { entry in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text("\(entry.testName): \(entry.value) \(entry.unit)")
-                                Text(entry.date, style: .date)
-                            }
-                            Spacer()
+                        VStack(alignment: .leading) {
+                            Text("\(entry.testName): \(entry.value, specifier: "%.1f") \(entry.unit)")
+                            Text("Date: \(entry.date, formatter: itemFormatter)")
                             if let notes = entry.notes {
                                 Text("Notes: \(notes)")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
                             }
                         }
                     }
                 }
-                .navigationTitle("Bloodwork Tracker")
-                .toolbar {
-                    Button(action: {
-                        isAddingEntry = true
-                    }) {
-                        Image(systemName: "plus")
+
+                // Buttons for summaries and trends
+                HStack {
+                    Picker("Select Test", selection: $selectedTestName) {
+                        Text("None").tag("")
+                        ForEach(Array(Set(bloodworkData.entries.map { $0.testName })), id: \.self) { testName in
+                            Text(testName).tag(testName)
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+
+                    Button("Show Summary") {
+                        if let average = bloodworkData.averageValue(for: selectedTestName) {
+                            print("Average \(selectedTestName): \(average) \(bloodworkData.entries.first { $0.testName == selectedTestName }?.unit ?? "")")
+                        }
+                    }
+                    .disabled(selectedTestName.isEmpty)
+
+                    Button("Show Trends") {
+                        showingTrends = true
+                    }
+                    .disabled(selectedTestName.isEmpty)
+                    .sheet(isPresented: $showingTrends) {
+                        TrendsView(entries: bloodworkData.entries.filter { $0.testName == selectedTestName }, testName: selectedTestName)
                     }
                 }
-                .sheet(isPresented: $isAddingEntry) {
-                    AddBloodworkEntryView(isPresented: $isAddingEntry, bloodworkData: bloodworkData)
-                }
+                .padding()
             }
+            .navigationTitle("Bloodwork Tracker")
         }
     }
+
+    private let itemFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }
 
-// Add Entry View
-struct AddBloodworkEntryView: View {
-    @Binding var isPresented: Bool
-    @ObservedObject var bloodworkData: BloodworkData
-    @State private var date = Date()
-    @State private var testName = ""
-    @State private var value = ""
-    @State private var unit = ""
-    @State private var notes = ""
+// Simple trends view (without Charts for now)
+struct TrendsView: View {
+    let entries: [BloodworkEntry]
+    let testName: String
 
     var body: some View {
         NavigationView {
-            Form {
-                DatePicker("Date", selection: $date, displayedComponents: .date)
-                TextField("Test Name", text: $testName)
-                TextField("Value", text: $value)
-                    .keyboardType(.decimalPad)
-                TextField("Unit", text: $unit)
-                TextField("Notes (Optional)", text: $notes)
-                Button("Save") {
-                    if let valueDouble = Double(value) {
-                        let newEntry = BloodworkEntry(date: date, testName: testName, value: valueDouble, unit: unit, notes: notes)
-                        bloodworkData.addEntry(entry: newEntry)
-                        isPresented = false
-                    } else {
-                        // Handle invalid input (e.g., show an alert)
-                        print("Invalid input: Value must be a number.")
-                    }
+            List {
+                ForEach(entries) { entry in
+                    Text("\(entry.date, formatter: dateFormatter): \(entry.value, specifier: "%.1f") \(entry.unit)")
                 }
             }
-            .navigationTitle("Add Entry")
-            .navigationBarItems(trailing: Button("Cancel") { isPresented = false })
+            .navigationTitle("\(testName) Trends")
+            .toolbar {
+                Button("Done") {
+                    // Dismiss the sheet
+                }
+            }
         }
     }
+
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }
 
-```
-
-Remember to install the `Charts` library using Swift Package Manager.  This improved example includes:
-
-* A more robust data model.
-* Data persistence using UserDefaults (easily replaceable with Core Data).
-* A chart to visualize data using the `Charts` library.
-* Error handling for invalid input in the `AddBloodworkEntryView`.
-* A cleaner UI with separate views for adding entries.
-
-This is a much more complete and functional example.  Remember to replace UserDefaults with Core Data for a production-ready application.  Also, adapt the chart to display the specific data you are tracking.  Consider adding validation to ensure the user enters appropriate data.
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
+}
